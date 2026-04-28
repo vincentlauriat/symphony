@@ -27,6 +27,11 @@ defmodule SymphonyElixirWeb.Router do
     live("/", DashboardLive, :index)
   end
 
+  scope "/mcp", SymphonyElixirWeb do
+    get("/sse", MCPController, :sse)
+    post("/messages", MCPController, :message)
+  end
+
   scope "/", SymphonyElixirWeb do
     get("/api/v1/state", ObservabilityApiController, :state)
 
