@@ -25,8 +25,10 @@ defmodule SymphonyElixirWeb.MCPController do
   def message(conn, _params) do
     with {:ok, body, conn} <- read_body(conn),
          {:ok, request} <- Jason.decode(body) do
-      response = handle_request(request)
-      json(conn, response)
+      case handle_request(request) do
+        :noop -> send_resp(conn, 204, "")
+        response -> json(conn, response)
+      end
     else
       _ ->
         conn
@@ -47,26 +49,31 @@ defmodule SymphonyElixirWeb.MCPController do
     }
   end
 
-  defp handle_request(%{"method" => "notifications/initialized"}) do
-    %{"jsonrpc" => "2.0", "id" => nil, "result" => %{}}
-  end
+  defp handle_request(%{"method" => "notifications/" <> _}), do: :noop
 
   defp handle_request(%{"method" => "tools/list", "id" => id}) do
-    tools =
-      DynamicTool.tool_specs()
-      |> Enum.map(fn spec ->
-        %{
-          "name" => spec["name"],
-          "description" => spec["description"],
-          "inputSchema" => spec["inputSchema"]
-        }
-      end)
-
+    tools = DynamicTool.tool_specs()
     %{"jsonrpc" => "2.0", "id" => id, "result" => %{"tools" => tools}}
   end
 
   defp handle_request(%{"method" => "tools/call", "id" => id, "params" => %{"name" => tool, "arguments" => args}}) do
     result = DynamicTool.execute(tool, args)
+
+    content = [%{"type" => "text", "text" => Map.get(result, "output", inspect(result))}]
+    is_error = Map.get(result, "success") == false
+
+    %{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "result" => %{
+        "content" => content,
+        "isError" => is_error
+      }
+    }
+  end
+
+  defp handle_request(%{"method" => "tools/call", "id" => id, "params" => %{"name" => tool}}) do
+    result = DynamicTool.execute(tool, %{})
 
     content = [%{"type" => "text", "text" => Map.get(result, "output", inspect(result))}]
     is_error = Map.get(result, "success") == false
@@ -106,7 +113,7 @@ defmodule SymphonyElixirWeb.MCPController do
   end
 
   defp send_sse_event(conn, event_name, data) do
-    chunk(conn, "event: #{event_name}\ndata: #{data}\n\n")
+    {:ok, conn} = chunk(conn, "event: #{event_name}\ndata: #{data}\n\n")
     conn
   end
 end
