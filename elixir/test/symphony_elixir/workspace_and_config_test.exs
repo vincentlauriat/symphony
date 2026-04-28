@@ -1233,6 +1233,31 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     assert Config.workflow_prompt() == workflow_prompt
   end
 
+  test "agent.provider defaults to codex" do
+    write_workflow_file!(Workflow.workflow_file_path())
+    assert Config.settings!().agent.provider == "codex"
+    assert Config.agent_module() == SymphonyElixir.Agents.Codex
+  end
+
+  test "agent.provider claude_code resolves to ClaudeCode module" do
+    write_workflow_file!(Workflow.workflow_file_path(), agent_provider: "claude_code")
+    assert Config.agent_module() == SymphonyElixir.Agents.ClaudeCode
+  end
+
+  test "claude_code config has expected defaults" do
+    write_workflow_file!(Workflow.workflow_file_path())
+    cc = Config.settings!().claude_code
+    assert cc.command == "claude"
+    assert cc.turn_timeout_ms == 3_600_000
+    assert cc.mcp_port == 4001
+    assert "Bash" in cc.allowed_tools
+  end
+
+  test "claude_code.mcp_port is configurable" do
+    write_workflow_file!(Workflow.workflow_file_path(), claude_code_mcp_port: 5500)
+    assert Config.settings!().claude_code.mcp_port == 5500
+  end
+
   test "remote workspace lifecycle uses ssh host aliases from worker config" do
     test_root =
       Path.join(
