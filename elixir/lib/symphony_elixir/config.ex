@@ -65,7 +65,8 @@ defmodule SymphonyElixir.Config do
   def agent_module do
     case settings!().agent.provider do
       "claude_code" -> SymphonyElixir.Agents.ClaudeCode
-      _ -> SymphonyElixir.Agents.Codex
+      "codex" -> SymphonyElixir.Agents.Codex
+      other -> raise ArgumentError, "Unknown agent provider: #{inspect(other)}"
     end
   end
 

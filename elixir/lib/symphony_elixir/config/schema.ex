@@ -222,7 +222,7 @@ defmodule SymphonyElixir.Config.Schema do
       |> cast(attrs, [:command, :model, :turn_timeout_ms, :allowed_tools, :mcp_port], empty_values: [])
       |> validate_required([:command])
       |> validate_number(:turn_timeout_ms, greater_than: 0)
-      |> validate_number(:mcp_port, greater_than: 0)
+      |> validate_number(:mcp_port, greater_than: 0, less_than_or_equal_to: 65535)
     end
   end
 
