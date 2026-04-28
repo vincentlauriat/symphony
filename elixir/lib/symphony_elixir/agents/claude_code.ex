@@ -30,23 +30,11 @@ defmodule SymphonyElixir.Agents.ClaudeCode do
       }
     }
 
-    case Jason.encode(mcp_config) do
-      {:ok, json} ->
-        case File.write(mcp_config_path, json) do
-          :ok ->
-            {:ok,
-             %{
-               workspace: workspace,
-               session_id: nil,
-               mcp_config_path: mcp_config_path
-             }}
-
-          {:error, reason} ->
-            {:error, {:mcp_config_write_failed, reason}}
-        end
-
-      {:error, reason} ->
-        {:error, {:mcp_config_encode_failed, reason}}
+    with {:ok, json} <- Jason.encode(mcp_config),
+         :ok <- File.write(mcp_config_path, json) do
+      {:ok, %{workspace: workspace, session_id: nil, mcp_config_path: mcp_config_path}}
+    else
+      {:error, reason} -> {:error, {:mcp_config_failed, reason}}
     end
   end
 
@@ -61,15 +49,18 @@ defmodule SymphonyElixir.Agents.ClaudeCode do
     case find_executable(settings.command) do
       {:ok, executable} ->
         port = open_port(executable, command, session.workspace)
-
         Port.command(port, prompt <> "\n")
 
-        case await_completion(port, settings.turn_timeout_ms, on_message, issue) do
-          {:ok, session_id, result} ->
-            {:ok, %{session_id: session_id, result: result}}
+        try do
+          case await_completion(port, settings.turn_timeout_ms, on_message, issue) do
+            {:ok, session_id, result} ->
+              {:ok, %{session_id: session_id, result: result}}
 
-          {:error, reason} ->
-            {:error, reason}
+            {:error, reason} ->
+              {:error, reason}
+          end
+        after
+          close_port(port)
         end
 
       {:error, :not_found} ->
@@ -113,6 +104,12 @@ defmodule SymphonyElixir.Agents.ClaudeCode do
     end
   end
 
+  defp close_port(port) do
+    Port.close(port)
+  rescue
+    ArgumentError -> :ok
+  end
+
   defp open_port(executable, args, workspace) do
     Port.open(
       {:spawn_executable, String.to_charlist(executable)},
@@ -147,7 +144,7 @@ defmodule SymphonyElixir.Agents.ClaudeCode do
         {:error, {:port_exit, status}}
     after
       timeout_ms ->
-        Port.close(port)
+        close_port(port)
         {:error, :turn_timeout}
     end
   end
@@ -163,9 +160,8 @@ defmodule SymphonyElixir.Agents.ClaudeCode do
         {:ok, session_id, :turn_completed}
 
       {:ok, %{"type" => "result", "subtype" => subtype} = payload} ->
-        reason = String.to_atom(subtype)
-        on_message.(%{event: :turn_ended_with_error, reason: reason, payload: payload, timestamp: DateTime.utc_now()})
-        {:error, {:turn_failed, reason}}
+        on_message.(%{event: :turn_ended_with_error, reason: subtype, payload: payload, timestamp: DateTime.utc_now()})
+        {:error, {:turn_failed, subtype}}
 
       {:ok, %{"type" => "assistant"} = payload} ->
         on_message.(%{event: :notification, payload: payload, timestamp: DateTime.utc_now()})
@@ -178,7 +174,7 @@ defmodule SymphonyElixir.Agents.ClaudeCode do
       {:error, _} ->
         line_trimmed = String.trim(line)
 
-        unless line_trimmed == "" do
+        if line_trimmed != "" do
           if String.match?(line_trimmed, ~r/\b(error|warn|warning|failed|fatal|panic|exception)\b/i) do
             Logger.warning("Claude Code output: #{String.slice(line_trimmed, 0, 500)}")
           else
