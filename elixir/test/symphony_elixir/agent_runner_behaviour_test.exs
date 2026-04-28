@@ -49,6 +49,6 @@ defmodule SymphonyElixir.AgentRunnerBehaviourTest do
                max_turns: 1
              ])
 
-    assert_receive {:agent_worker_update, "issue-behaviour-test", %{event: :turn_completed}}, 2_000
+    assert_receive {:agent_worker_update, "issue-behaviour-test", %{event: :turn_completed}}, 500
   end
 end
